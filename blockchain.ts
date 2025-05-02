@@ -1,4 +1,5 @@
-import * as CryptoJS from 'crypto-js';
+import crypto from 'crypto';
+import { broadcastLatest } from './p2p.js';
 
 class Block {
     public index: number;
@@ -17,29 +18,43 @@ class Block {
 }
 
 const calculateHash = (index: number, previousHash: string, timestamp: number, data: string): string =>
-    CryptoJS.SHA256(index + previousHash + timestamp + data).toString();
+    crypto.createHash('sha256').update(index + previousHash + timestamp + data).digest('hex');
+
+const calculateHashForBlock = (block: Block): string =>
+    calculateHash(block.index, block.previousHash, block.timestamp, block.data);
 
 // Genesis block: is the first block in the blockchain. The only block that has no previousHash
 const genesisBlock: Block = new Block(
     0, '816534932c2b7154836da6afc367695e6337db8a921823784c14378abed4f7d7', '', 1465154705, 'my genesis block!!'
 );
 
-const generateNewBlock = (blockData: string) => {
+let blockchain: Block[] = [genesisBlock];
+
+const getBlockchain = (): Block[] => blockchain;
+
+const getLatestBlock = (): Block => blockchain[blockchain.length - 1];
+
+const generateNextBlock = (blockData: string): Block => {
     const previousBlock: Block = getLatestBlock();
     const nextIndex: number = previousBlock.index + 1;
     const nextTimestamp: number = new Date().getTime() / 1000;
-    const newBlock: string = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
+    const nextHash: string = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
+    const newBlock: Block = new Block(nextIndex, nextHash, previousBlock.hash, nextTimestamp, blockData);
     return newBlock;
 }
 
-let blockchain: Block[] = [genesisBlock];
+const addBlock = (newBlock: Block) => {
+    if(isValidNewBlock(newBlock, getLatestBlock())) {
+        blockchain.push(newBlock);
+    }
+}
 
 // Validating the integrity of blocks
 // For a block to be valid following have to be true
 // 1. Index of the block is one number greater than the previous
 // 2. The 'previousHash' of the block match the 'hash' of the previous block
 // 3. The hash of the block itself must be valid
-const isValidNewBlock = (newBlock: Block, previousBlock: Block) {
+const isValidNewBlock = (newBlock: Block, previousBlock: Block) => {
     if(previousBlock.index + 1 !== newBlock.index) {
         console.log('Invalid index');
         return false;
@@ -82,6 +97,14 @@ const isValidChain = (blockchainToValidate: Block[]): boolean => {
     return true;
 }
 
+const addBlockToChain = (newBlock: Block) => {
+    if (isValidNewBlock(newBlock, getLatestBlock())) {
+        blockchain.push(newBlock);
+        return true;
+    }
+    return false;
+};
+
 // Choosing the longest chain
 // There should always be only one explicit set of blocks in the chain at a given time. In case of conflicts (e.g. two nodes both generate 
 // block number 72) we choose the chain that has the longest number of blocks. 
@@ -100,3 +123,5 @@ const replaceChain = (newBlocks: Block[]) => {
 // 1. When a node generates a new block, it broadcasts it to the network
 // 2. When a node connects to a new peer it querys for the latest block
 // 3. When a node encounters a block that has an index larger than the current known block, it either adds the block the its current chain or querys for the full blockchain.
+
+export {Block, getBlockchain, getLatestBlock, generateNextBlock, isValidBlockStructure, replaceChain, addBlockToChain};
